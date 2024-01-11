@@ -14,7 +14,7 @@ object StreamingDemo {
 
 
     val spark = SparkSession.builder
-      .appName("Simple Application")
+      .appName("Simple Stream Application")
       .master("local[*]")
       .getOrCreate()
     spark.conf.set("spark.sql.shuffle.partitions", "2")
