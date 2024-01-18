@@ -1,2 +1,5 @@
-.idea
-project
+.idea/
+project/
+/.bsp/
+/.idea/
+/project/
