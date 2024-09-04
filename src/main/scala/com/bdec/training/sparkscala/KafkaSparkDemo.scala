@@ -1,7 +1,5 @@
 package com.bdec.training.sparkscala
 
-import StreamingDemo.join_streaming_with_watermark
-
 import org.apache.spark.sql.SparkSession
 
 object KafkaSparkDemo {

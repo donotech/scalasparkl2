@@ -21,9 +21,17 @@ object SparkAppOne {
       .master("local[*]")
       .getOrCreate()
     //print(u.getPath)
+
+    val logDataScala = scala.io.Source.fromString(logFile)
+    val numAsScala = logDataScala.getLines().filter(line => line.contains("a")).toList.length
+
     val logData : Dataset[String] = spark.read.textFile(logFile)
+    val numAs = logData.filter(line => line.contains("a"))//.count()
     logData.show()
-    val numAs = logData.filter(line => line.contains("a")).count()
+
+
+
+
     val numBs = logData.filter(line => line.contains("b")).count()
     println(s"Lines with a: $numAs, Lines with b: $numBs")
     //spark.stop()

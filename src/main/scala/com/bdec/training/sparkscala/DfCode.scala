@@ -1,6 +1,6 @@
 package com.bdec.training.sparkscala
 
-import org.apache.spark.sql.functions.{explode, explode_outer}
+import org.apache.spark.sql.functions.{col, explode, explode_outer}
 import org.apache.spark.sql.types.{ArrayType, MapType, StringType, StructType}
 import org.apache.spark.sql.{Row, SparkSession}
 
@@ -42,10 +42,16 @@ object DfCode {
     val df = spark.createDataFrame(spark.sparkContext.parallelize(arrayData),arraySchema)
     df.printSchema()
     df.show(false)
-    //df.select($"name",explode($"knownLanguages"))
-    //df.select($"name",explode_outer($"knownLanguages"))
-    df.select($"name",explode_outer($"properties"))
-      .show(false)
+    val explode1Df = df.select($"name", $"properties", explode($"knownLanguages"))
+      .withColumnRenamed("col", "knownLanguages")
+    explode1Df.show()
+    explode1Df.select($"name", $"knownLanguages", explode_outer($"properties"))
+      .withColumnsRenamed(Map("key" ->"attribute", "value" -> "color")).show()
+
+    val simpleFlattenDf = explode1Df.select($"name", $"knownLanguages", $"properties.hair", $"properties.eye")
+    simpleFlattenDf.show()
+
+//      .show(false)
   }
 
 }

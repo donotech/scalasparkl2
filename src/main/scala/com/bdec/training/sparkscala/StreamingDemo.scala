@@ -1,6 +1,6 @@
 package com.bdec.training.sparkscala
 
-import org.apache.spark.sql.functions.{expr, window}
+import org.apache.spark.sql.functions.{explode, expr, split, window}
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, SparkSession, functions}
 
@@ -13,11 +13,6 @@ object StreamingDemo {
 
     val news = spark.readStream.schema(newsSchema).json("file:///C:\\tmp\\news_json")
     news
-//
-//
-//    val query = news.writeStream.outputMode("append").format("console").start
-//    //val query = words.writeStream.outputMode("append").format("console").start
-//    query.awaitTermination()
   }
 
   def read_price(spark: SparkSession): DataFrame = {
@@ -29,11 +24,6 @@ object StreamingDemo {
     val price = spark.readStream.schema(priceSchema)
       .option("header","true").csv("file:///C:\\tmp\\price")
     price
-
-//
-//    val query = price.writeStream.outputMode("append").format("console").start
-//    //val query = words.writeStream.outputMode("append").format("console").start
-//    query.awaitTermination()
   }
 
   def join_streaming(spark: SparkSession): Unit = {
@@ -116,14 +106,26 @@ object StreamingDemo {
     spark.conf.set("spark.sql.shuffle.partitions", "2")
     spark.sparkContext.setLogLevel("WARN")
 
-//    val streamingFiles = spark.read.text("file:///C:\\tmp\\text_files")
-//    streamingFiles.show()
+    val wordTypeDf = spark.read.option("header", "true").option("inferSchema", "true")
+      .csv("file:///C:\\tmp\\text_source\\wordtypes.txt")
+
+    val streamingFiles = spark.readStream.text("file:///C:\\tmp\\text_files")
+    //streamingFiles.write.mode("append/overwrite/create")
+    val wordListDf = streamingFiles.withColumn("word_list",
+      split(streamingFiles.col("value")," "))
+    val wordsDf = wordListDf.withColumn("word", explode(wordListDf.col("word_list")))
+    val joinedDf = wordsDf.join(wordTypeDf, wordsDf.col("word") === wordTypeDf.col("word"),
+      "right_outer")
+//    val countsDf = wordsDf.groupBy("word").count()
+    val query = joinedDf.writeStream.outputMode("append").format("console").start()
+    query.awaitTermination()
+
 
 //    join_static(spark)
 //
       //read_news(spark)
     //read_price(spark)
     //join_streaming(spark)
-    join_streaming_with_watermark(spark)
+//    join_streaming_with_watermark(spark)
   }
 }

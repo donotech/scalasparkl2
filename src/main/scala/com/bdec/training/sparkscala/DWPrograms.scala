@@ -1,12 +1,12 @@
 package com.bdec.training.sparkscala
 
-import org.apache.spark.sql.{DataFrame, Dataset, Encoders, Row, SparkSession, functions}
+import org.apache.spark.sql.{Column, DataFrame, Dataset, Encoders, Row, SparkSession, functions}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.to_date
 import org.apache.spark.sql.expressions.{Window, WindowSpec}
+import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
 
 import java.sql.Date
-
-
 
 
 
@@ -45,7 +45,7 @@ object DWPrograms {
     val rowSpec = Window.partitionBy().orderBy("item_id")
     val rowWindowDf = sales1Df.withColumn("row_number", functions.row_number.over(rowSpec))
     rowWindowDf.show()
-
+    rowWindowDf.selectExpr("*", "total_amount/81 as dollar_converted_total")
 //    rankWindowDf.show()
   }
 
@@ -90,6 +90,9 @@ object DWPrograms {
       df3.col("actual_total") - df3.col("total_amount")).filter("unit_price > 1")
 
     val joinedDf = prodDf.join(transformedSalesDf, "item_id")
+    val groupedDf1 = joinedDf.groupBy("product_type")
+    //groupedDf1.as.sum("total_amount").show()
+
     val groupedDf = joinedDf.groupBy("product_type").sum("total_amount")
 
     //joinedDf.show()
@@ -97,23 +100,79 @@ object DWPrograms {
 
   }
 
+  class A(someval: Int) {
+    val x: Int = someval
+    def &&(a: A): Boolean = {
+      a.x > x
+    }
 
+    def < (a: A): Boolean = {
+      a.x > x
+    }
+  }
+
+
+  def gbp_function(i: Int): Double = {
+    i / 104
+  }
+
+  def myudf_function = (i: Int) => { gbp_function(i)}
 
 
   def simple_df_ops(spark: SparkSession) = {
     val sales1Df: DataFrame =  spark.read.option("header", "true").option("inferSchema", "true").csv(sales_1_path)
     val sales2Df: DataFrame =  spark.read.option("header", "true").option("inferSchema", "true").csv(sales_2_path)
-    val unionDf = sales1Df.union(sales2Df)
+    val unionDf = sales1Df.unionAll(sales2Df)
     val prodDf: DataFrame =  spark.read.option("header", "true").option("inferSchema", "true").csv(product_path)
     val joinedDf = prodDf.join(unionDf, "item_id")
 
-    joinedDf.show()
+    val dollarValueFunction = udf((amt: Integer) => amt/84.0)
+    val withUdfDf = joinedDf.withColumn("dollar_total",
+      dollarValueFunction(joinedDf.col("total_amount")))
 
-        val df2 = sales1Df.select("item_qty", "unit_price", "total_amount")
-        val df3 = df2.withColumn("actual_total", df2.col("item_qty") * df2.col("unit_price"))
-        val df4 = df3.withColumn("discount", df3.col("actual_total") - df3.col("total_amount"))
-        df4.show()
-        //    val r1: Row = sales1Df.first()
+    withUdfDf.show()
+
+    spark.udf.register("convertGBP", myudf_function)
+    joinedDf.createOrReplaceTempView("JOINED_TABLE")
+    spark.sql("select item_id, item_name, total_amount, convertGBP(total_amount)").show()
+
+
+//    val df2 = sales1Df.select("item_qty", "unit_price", "total_amount")
+//    val df3 = df2.withColumn("actual_total", df2.col("item_qty") * df2.col("unit_price"))
+//    val df4 = df3.withColumn("discount", df3.col("actual_total") - df3.col("total_amount"))
+
+//    unionDf.coalesce(1).write.mode("overwrite").csv("C:\\tmp\\scala_uniondf")
+//    unionDf.write.mode("overwrite").option("header", "true").csv("C:\\tmp\\joined_df_csv")
+//    unionDf.write.mode("overwrite").parquet("C:\\tmp\\joined_df_parquet")
+
+//    joinedDf.filter("date_of_sale='2020-09-02'").write.mode("overwrite").partitionBy("date_of_sale")
+//      .csv("c:\\tmp\\scala_joined_partitioned_dated")
+//    joinedDf.filter("date_of_sale='2020-09-03'").write.mode("append").partitionBy("date_of_sale")
+//      .csv("c:\\tmp\\scala_joined_partitioned_dated")
+
+//    import spark.implicits._
+//    val rollupDf = joinedDf.rollup($"product_name", $"product_type", $"date_of_sale")
+//      .sum("total_amount")
+//    rollupDf.show(500)
+//    val cubedDf = joinedDf.cube($"product_name", $"product_type", $"date_of_sale")
+//      .sum("total_amount")
+//    cubedDf.show(500)
+//    val groupByDf = joinedDf.groupBy($"product_name", $"product_type", $"date_of_sale")
+//      .sum("total_amount")
+//    groupByDf.show()
+//    joinedDf.createOrReplaceTempView("ITEM_SALES")
+//    joinedDf.cache()
+//    val sqlStr = "select item_id, product_name, product_type, " +
+//      "sum(total_amount) over (partition by product_type) as product_type_total, " +
+//      "sum(total_amount) over (partition by product_name) as product_total," +
+//      " total_amount, " +
+//      "sum(total_amount) over() as grand_total from ITEM_SALES order by product_type"
+//    val dfSQL = spark.sql(sqlStr)
+//    dfSQL.explain()
+//    dfSQL.show()
+
+
+    //    val r1: Row = sales1Df.first()
     //    sales1Df.take()
     //    sales1Df.first()
     //    sales1Df.collect()
@@ -122,19 +181,20 @@ object DWPrograms {
         //val sales1CastedDf = sales1Df.withColumn("casted_date", sales1Df.col("date_of_sale").cast("string"))
         //sales1CastedDf.printSchema()
 
-        val total = sales1Df.agg(sum("total_amount")).withColumnRenamed("sum(total_amount)", "sum_total")
-        val sumTotal = df4.agg(Map("total_amount" -> "sum", "discount" -> "sum")).withColumnsRenamed(
-          Map("sum(total_amount)" -> "total_amount_sum", "sum(discount)" -> "discount_sum")
-        )
-        val pctTotal = sumTotal.withColumn("pct_total",
-          sumTotal.col("discount_sum")/sumTotal.col("total_amount_sum") * 100
-        )
+//        val total = sales1Df.agg(sum("total_amount")).withColumnRenamed("sum(total_amount)", "sum_total")
+//        val sumTotal = df4.agg(Map("total_amount" -> "sum", "discount" -> "sum")).withColumnsRenamed(
+//          Map("sum(total_amount)" -> "total_amount_sum", "sum(discount)" -> "discount_sum")
+//        )
+//        val pctTotal = sumTotal.withColumn("pct_total",
+//          sumTotal.col("discount_sum")/sumTotal.col("total_amount_sum") * 100
+//        )
 
-        pctTotal.show()
-        total.show()
-        total.first()
+//        pctTotal.show()
+//        total.show()
+//        total.first()
 
-        sales1Df.show()
+//        sales1Df.show()
+//    Thread.sleep(1000000)
 
   }
 
@@ -156,12 +216,21 @@ object DWPrograms {
     val sales2Df: DataFrame =  spark.read.option("header", "true").option("inferSchema", "true").csv(sales_2_path)
     val unionDf = sales1Df.union(sales2Df)
     val prodDf: DataFrame =  spark.read.option("header", "true").option("inferSchema", "true").csv(product_path)
-    val joinedDf = prodDf.join(unionDf, "item_id")
+    val joinedDf = prodDf.join(unionDf, "item_id").hint("broadcast hash join")
+    joinedDf.repartition(10, joinedDf.col("item_id"))
+    joinedDf.coalesce(5)
 
     joinedDf.write
       .mode("append")
       .option("header", "true")
       .parquet("file:///C:/Training/TVS/dw/output_csv/joined_csv")
+
+    val newJoinedDf = spark.read.parquet("file:///C:/Training/TVS/dw/output_csv/joined_csv")
+    val groupedDf = newJoinedDf.groupBy("item_id").sum("total_amount")
+    groupedDf.show()
+    val groupd2Df = joinedDf.groupBy("item_id").sum("total_amount")
+    groupd2Df.show()
+    Thread.sleep(1000000)
     //joinedDf.write.format("csv").save("path", "C:\\Training\\TVS\\dw\\output_csv")
 
   }
@@ -180,8 +249,48 @@ object DWPrograms {
 
     val spark = SparkSession.builder
       .appName("Simple Application")
-      .master("local[*]")
+      .master("local[1]")
+      //.config("spark.sql.adaptive.enabled", "false")
       .getOrCreate()
+
+    //spark.conf.set("spark.sql.autoBroadcastJoinThreshold","-1")
+    simple_df_ops(spark)
+    Thread.sleep(1000000)
+
+    //    val joinedCSVDf = spark.read.option("header", "true").csv("C:\\tmp\\joined_df_csv")
+//    val parquetDf = spark.read.parquet("C:\\tmp\\joined_df_parquet")
+//    joinedCSVDf.filter("item_id = '1'").explain(extended = true)
+//    parquetDf.filter("item_id = 1").explain(extended = true)
+//
+//    joinedCSVDf.show()
+//    parquetDf.show()
+//    Thread.sleep(1000000)
+
+
+
+//    val sales1Df: DataFrame =  spark.read.option("header", "true").csv(sales_1_path)
+//   // sales1Df.printSchema()
+//    val castedSalesDf = sales1Df.withColumn("item_id_casted", sales1Df.col("item_id").cast("integer"))
+
+//    //castedSalesDf.printSchema()
+////    val salesSchema = StructType(Array(
+////      StructField("my_item_id", DataTypes.StringType),
+////      StructField("my_item_qty", DataTypes.IntegerType),
+////      StructField("my_item_unitprice", DataTypes.DoubleType)
+////    ))
+//
+////    val salesManualSchemaDf = spark.read.option("delimiter", ":").option("header", "true").schema(salesSchema).csv(sales_1_path)
+////    salesManualSchemaDf.show()
+////    salesManualSchemaDf.printSchema()
+//
+
+    //    val dfArr = sales1Df.collect()
+//    val firstRow = dfArr(0)
+//    val firstItemId = firstRow.getInt(0)
+//    println(s"first item_id = $firstItemId")
+    //sales1Df.show()
+
+    //sales1Df.groupBy("date_of_sale").agg(Map("total_amount" -> "sum")).show()
 
 //    complex_join(spark)
 //   sql_version(spark)
@@ -189,7 +298,7 @@ object DWPrograms {
 //    window_agg(spark)
 //
 //    simple_cube(spark)
-    joined_write(spark)
+    //joined_write(spark)
   }
 
 }
